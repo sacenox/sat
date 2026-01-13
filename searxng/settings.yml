@@ -1,0 +1,12 @@
+use_default_settings: true
+
+server:
+  secret_key: "satisgreat"
+
+search:
+  formats:
+    - html
+    - json
+
+valkey:
+  url: valkey://redis:6379/0
