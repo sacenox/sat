@@ -1,9 +1,9 @@
-export default function Home() {
+import { ModeToggle } from "@/components/mode-toggle";
+
+export default function Page() {
   return (
-    <div className="">
-      <main className="">
-        <h1 className="text-4xl font-bold">Search Agent thingy (SAT)</h1>
-      </main>
+    <div>
+      <ModeToggle />
     </div>
   );
 }

@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { Open_Sans } from "next/font/google";
+import { Noto_Sans, Open_Sans } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
+
+const notoSans = Noto_Sans({ variable: "--font-sans" });
 
 const openSans = Open_Sans({
   variable: "--font-open-sans",
@@ -18,8 +21,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${openSans.variable} antialiased`}>{children}</body>
+    <html lang="en" className={notoSans.variable} suppressHydrationWarning>
+      <body>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
