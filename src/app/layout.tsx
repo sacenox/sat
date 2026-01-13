@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
-import { Noto_Sans, Open_Sans } from "next/font/google";
+import { Noto_Sans } from "next/font/google";
+import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import "./globals.css";
 
 const notoSans = Noto_Sans({ variable: "--font-sans" });
-
-const openSans = Open_Sans({
-  variable: "--font-open-sans",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Search Agent thingy (SAT)",
@@ -29,7 +26,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <SidebarProvider>
+            <AppSidebar />
+            <main>
+              <SidebarTrigger />
+              {children}
+            </main>
+          </SidebarProvider>
         </ThemeProvider>
       </body>
     </html>

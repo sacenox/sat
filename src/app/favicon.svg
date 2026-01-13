@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Magnifying glass circle -->
+  <circle cx="14" cy="14" r="7.5" fill="none" stroke="#000000" stroke-width="2.5"/>
+  
+  <!-- Magnifying glass handle -->
+  <line x1="20.5" y1="20.5" x2="26" y2="26" stroke="#000000" stroke-width="2.5" stroke-linecap="round"/>
+  
+  <!-- Bowtie centered in the magnifying glass -->
+  <g transform="translate(14, 14)">
+    <!-- Left triangle -->
+    <path d="M -5,-2.5 L -5,2.5 L 0,0 Z" fill="#000000"/>
+    <!-- Right triangle -->
+    <path d="M 5,-2.5 L 5,2.5 L 0,0 Z" fill="#000000"/>
+    <!-- Center knot -->
+    <circle cx="0" cy="0" r="1.2" fill="#000000"/>
+  </g>
+</svg>
