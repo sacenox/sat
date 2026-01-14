@@ -9,7 +9,14 @@ import {
   User,
   Wrench,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  addTurn,
+  type ConversationWithTurns,
+  createConversation,
+  getConversation,
+} from "@/app/actions/conversations";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -39,10 +46,19 @@ interface Message {
   toolCalls?: ToolCall[];
 }
 
-export function Chat() {
+interface ChatProps {
+  conversationId?: string;
+}
+
+export function Chat({ conversationId }: ChatProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<
+    string | undefined
+  >(conversationId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -53,6 +69,42 @@ export function Chat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // Load existing conversation turns
+  useEffect(() => {
+    async function loadConversation() {
+      if (!conversationId) {
+        setMessages([]);
+        setCurrentConversationId(undefined);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const conversation = await getConversation(conversationId);
+        if (conversation) {
+          setCurrentConversationId(conversationId);
+          setMessages(
+            conversation.turns.map(
+              (turn: ConversationWithTurns["turns"][number]) => ({
+                id: turn.id,
+                role: turn.role,
+                content: turn.content,
+                reasoning: turn.reasoning ?? undefined,
+                toolCalls: turn.toolCalls as ToolCall[] | undefined,
+              }),
+            ),
+          );
+        }
+      } catch (error) {
+        console.error("Failed to load conversation:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadConversation();
+  }, [conversationId]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -76,6 +128,37 @@ export function Chat() {
       let assistantContent = "";
       let assistantReasoning = "";
       const toolCallsMap = new Map<string, ToolCall>();
+
+      // Track if we need to navigate after streaming completes
+      let shouldNavigate = false;
+      let newConversationId: string | undefined;
+
+      // Determine conversation ID - create new if needed
+      let activeConversationId = currentConversationId;
+      if (!activeConversationId) {
+        try {
+          const newConversation = await createConversation();
+          activeConversationId = newConversation.id;
+          setCurrentConversationId(activeConversationId);
+          // Mark for navigation after streaming completes (not now, to avoid unmounting)
+          shouldNavigate = true;
+          newConversationId = activeConversationId;
+        } catch (error) {
+          console.error("Failed to create conversation:", error);
+          setIsStreaming(false);
+          return;
+        }
+      }
+
+      // Persist user turn to DB
+      try {
+        await addTurn(activeConversationId, {
+          role: "user",
+          content: trimmedInput,
+        });
+      } catch (error) {
+        console.error("Failed to save user turn:", error);
+      }
 
       const updateAssistantMessage = () => {
         setMessages((prev) => {
@@ -174,6 +257,8 @@ export function Chat() {
         }
 
         // Finalize: ensure assistant message exists even if empty
+        const finalContent =
+          assistantContent || "I apologize, I could not respond.";
         setMessages((prev) => {
           const hasAssistant = prev.some((m) => m.id === assistantMessageId);
           if (!hasAssistant) {
@@ -182,28 +267,56 @@ export function Chat() {
               {
                 id: assistantMessageId,
                 role: "assistant",
-                content: "I apologize, I could not respond.",
+                content: finalContent,
               },
             ];
           }
           return prev;
         });
+
+        // Persist assistant turn to DB
+        try {
+          await addTurn(activeConversationId, {
+            role: "assistant",
+            content: finalContent,
+            reasoning: assistantReasoning || null,
+            toolCalls:
+              toolCallsMap.size > 0 ? Array.from(toolCallsMap.values()) : null,
+          });
+        } catch (error) {
+          console.error("Failed to save assistant turn:", error);
+        }
       } catch (error) {
         console.error("Stream error:", error);
+        const errorContent =
+          "Sorry, there was an error processing your request. Please try again.";
         setMessages((prev) => [
           ...prev,
           {
             id: assistantMessageId,
             role: "assistant",
-            content:
-              "Sorry, there was an error processing your request. Please try again.",
+            content: errorContent,
           },
         ]);
+
+        // Persist error response to DB
+        try {
+          await addTurn(activeConversationId, {
+            role: "assistant",
+            content: errorContent,
+          });
+        } catch (persistError) {
+          console.error("Failed to save error turn:", persistError);
+        }
       } finally {
         setIsStreaming(false);
+        // Navigate to new conversation URL after streaming completes
+        if (shouldNavigate && newConversationId) {
+          router.push(`/conversation/${newConversationId}`);
+        }
       }
     },
-    [input, isStreaming],
+    [input, isStreaming, currentConversationId, router],
   );
 
   const handleKeyDown = useCallback(
@@ -215,6 +328,14 @@ export function Chat() {
     },
     [handleSubmit],
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="text-muted-foreground size-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col">

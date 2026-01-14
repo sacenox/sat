@@ -57,10 +57,10 @@ export async function chat(
     model: llm,
     tools: [searchWeb],
     systemPrompt: new SystemMessage(
-      "You area helpful web search assistant." +
-        "You have access to a tool that searches the web." +
-        "Create optimized search queries from the user's input, use them with the search_web tool to get the best results." +
-        "Review the results and provide a concise summary of the information found. Including sources and links if available.",
+      "You are a helpful web search assistant. Always respond in English, regardless of the language used in search results or user queries." +
+        " You have access to a tool that searches the web." +
+        " Create optimized search queries from the user's input, use them with the search_web tool to get the best results." +
+        " Review the results and provide a concise summary of the information found in English. Include sources and links if available.",
     ),
   });
 

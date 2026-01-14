@@ -3,6 +3,7 @@ import { Noto_Sans } from "next/font/google";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const notoSans = Noto_Sans({ variable: "--font-sans" });
@@ -33,6 +34,7 @@ export default function RootLayout({
               <main className="flex flex-1 flex-col">{children}</main>
             </div>
           </SidebarProvider>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>
