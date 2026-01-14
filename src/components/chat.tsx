@@ -10,6 +10,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MarkdownContent } from "@/components/markdown-content";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -324,7 +325,7 @@ function MessageBubble({ message }: { message: Message }) {
           {/* Reasoning section */}
           {message.reasoning && (
             <CardContent>
-              <Collapsible defaultOpen>
+              <Collapsible>
                 <div className="border-muted-foreground/20 bg-muted/30 rounded-lg border p-2">
                   <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 text-xs transition-colors [&[data-state=open]>svg:first-child]:rotate-90">
                     <ChevronRight className="size-3 transition-transform" />
@@ -352,7 +353,7 @@ function MessageBubble({ message }: { message: Message }) {
           {/* Main content */}
           {message.content && (
             <CardContent>
-              <p className="whitespace-pre-wrap">{message.content}</p>
+              <MarkdownContent content={message.content} />
             </CardContent>
           )}
         </Card>

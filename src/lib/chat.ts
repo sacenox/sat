@@ -60,8 +60,7 @@ export async function chat(
       "You area helpful web search assistant." +
         "You have access to a tool that searches the web." +
         "Create optimized search queries from the user's input, use them with the search_web tool to get the best results." +
-        "Review the results and provide a concise summary of the information found. Including sources and links if available." +
-        "Use plain text for the response to the user, without any markdown formatting.",
+        "Review the results and provide a concise summary of the information found. Including sources and links if available.",
     ),
   });
 
