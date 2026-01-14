@@ -3,6 +3,7 @@
 import {
   Bot,
   ChevronRight,
+  Info,
   Loader2,
   Search,
   SendHorizontal,
@@ -40,7 +41,7 @@ interface ToolCall {
 
 interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   reasoning?: string;
   toolCalls?: ToolCall[];
@@ -187,7 +188,10 @@ export function Chat({ conversationId }: ChatProps) {
         const response = await fetch("/api/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userInput: trimmedInput }),
+          body: JSON.stringify({
+            userInput: trimmedInput,
+            conversationId: activeConversationId,
+          }),
         });
 
         if (!response.ok) {
@@ -242,6 +246,18 @@ export function Chat({ conversationId }: ChatProps) {
                       result: event.result,
                     });
                   }
+                  break;
+                }
+                case "summarized": {
+                  // Insert a system notification message
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: crypto.randomUUID(),
+                      role: "system",
+                      content: `Older messages have been summarized to maintain context (${event.messageCount} messages compressed).`,
+                    },
+                  ]);
                   break;
                 }
               }
@@ -421,6 +437,21 @@ export function Chat({ conversationId }: ChatProps) {
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
+  const isSystem = message.role === "system";
+
+  // System messages are rendered as centered info cards
+  if (isSystem) {
+    return (
+      <div className="flex justify-center">
+        <Card size="sm" className="bg-muted/50 border-dashed">
+          <CardContent className="text-muted-foreground flex items-center gap-2 text-sm">
+            <Info className="size-4" />
+            {message.content}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>

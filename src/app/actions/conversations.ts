@@ -1,9 +1,9 @@
 "use server";
 
-import { db } from "@/db";
-import { type NewTurn, conversations, turns } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { db } from "@/db";
+import { conversations, type NewTurn, turns } from "@/db/schema";
 
 export async function getConversations() {
   return db.query.conversations.findMany({
@@ -86,6 +86,13 @@ export async function addTurn(
 export async function deleteConversation(id: string) {
   await db.delete(conversations).where(eq(conversations.id, id));
   revalidatePath("/");
+}
+
+export async function updateConversationSummary(id: string, summary: string) {
+  await db
+    .update(conversations)
+    .set({ summary, updatedAt: new Date() })
+    .where(eq(conversations.id, id));
 }
 
 // Type for the full conversation with turns

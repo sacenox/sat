@@ -1,10 +1,14 @@
 import {
   AIMessage,
   AIMessageChunk,
+  type BaseMessage,
+  HumanMessage,
+  SystemMessage as LangChainSystemMessage,
   ToolMessage,
 } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { concat } from "@langchain/core/utils/stream";
+import { MemorySaver } from "@langchain/langgraph";
 import { ChatOllama } from "@langchain/ollama";
 import { createAgent, SystemMessage } from "langchain";
 import { z } from "zod";
@@ -43,38 +47,156 @@ export type StreamEvent =
       name: string;
       args: Record<string, unknown>;
     }
-  | { type: "tool_result"; id: string; result: string };
+  | { type: "tool_result"; id: string; result: string }
+  | { type: "summarized"; messageCount: number };
+
+// Types for chat history
+export interface ToolCallData {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+}
+
+export interface ChatHistoryTurn {
+  role: "user" | "assistant";
+  content: string;
+  toolCalls?: ToolCallData[];
+}
+
+export interface ChatHistory {
+  summary?: string;
+  turns: ChatHistoryTurn[];
+}
+
+// Singleton checkpointer - persists in memory across requests
+// Note: Lost on server restart, but we re-populate from PostgreSQL
+const checkpointer = new MemorySaver();
+
+// Singleton agent instance
+let agentInstance: ReturnType<typeof createAgent> | null = null;
+
+function getAgent() {
+  if (!agentInstance) {
+    const llm = new ChatOllama({
+      model: "qwen3:8b",
+    });
+
+    agentInstance = createAgent({
+      model: llm,
+      tools: [searchWeb],
+      checkpointer,
+      systemPrompt: new SystemMessage(
+        "You are a helpful web search assistant. Always respond in English, regardless of the language used in search results or user queries." +
+          " You have access to a tool that searches the web." +
+          " Create optimized search queries from the user's input, use them with the search_web tool to get the best results." +
+          " Review the results and provide a concise summary of the information found in English. Include sources and links if available.",
+      ),
+    });
+  }
+  return agentInstance;
+}
+
+/**
+ * Convert history turns to LangChain BaseMessage array
+ */
+function historyToMessages(history: ChatHistory): BaseMessage[] {
+  const messages: BaseMessage[] = [];
+
+  // Prepend summary as system context if exists
+  if (history.summary) {
+    messages.push(
+      new LangChainSystemMessage(
+        `Previous conversation summary:\n${history.summary}`,
+      ),
+    );
+  }
+
+  for (const turn of history.turns) {
+    if (turn.role === "user") {
+      messages.push(new HumanMessage(turn.content));
+    } else {
+      if (turn.toolCalls?.length) {
+        messages.push(
+          new AIMessage({
+            content: turn.content,
+            tool_calls: turn.toolCalls.map((tc) => ({
+              id: tc.id,
+              name: tc.name,
+              args: tc.args,
+            })),
+          }),
+        );
+        // Add corresponding ToolMessages
+        for (const tc of turn.toolCalls) {
+          if (tc.result) {
+            messages.push(
+              new ToolMessage({
+                tool_call_id: tc.id,
+                content: tc.result,
+              }),
+            );
+          }
+        }
+      } else {
+        messages.push(new AIMessage(turn.content));
+      }
+    }
+  }
+
+  return messages;
+}
 
 export async function chat(
   userInput: string,
   onEvent: (event: StreamEvent) => void,
+  history?: ChatHistory,
+  conversationId?: string,
 ) {
-  const llm = new ChatOllama({
-    model: "qwen3:8b",
-  });
+  const agent = getAgent();
+  const threadId = conversationId ?? "default";
+  const config = { configurable: { thread_id: threadId } };
 
-  const agent = createAgent({
-    model: llm,
-    tools: [searchWeb],
-    systemPrompt: new SystemMessage(
-      "You are a helpful web search assistant. Always respond in English, regardless of the language used in search results or user queries." +
-        " You have access to a tool that searches the web." +
-        " Create optimized search queries from the user's input, use them with the search_web tool to get the best results." +
-        " Review the results and provide a concise summary of the information found in English. Include sources and links if available.",
-    ),
-  });
+  // Check if this thread has existing state in the checkpointer
+  // If not, we need to populate it from PostgreSQL history
+  if (history && history.turns.length > 0) {
+    try {
+      const existingState = (await agent.getState(config)) as {
+        values?: { messages?: unknown[] };
+      } | null;
+      const stateValues = existingState?.values;
 
-  // Stream both modes: "messages" for tokens, "updates" for tool calls/results
+      // If no messages in checkpointer state, populate from DB history
+      const hasMessages =
+        stateValues?.messages &&
+        Array.isArray(stateValues.messages) &&
+        stateValues.messages.length > 0;
+
+      if (!hasMessages) {
+        // Convert history to messages (excluding the current user message if it's already there)
+        const lastTurn = history.turns.at(-1);
+        const turnsToLoad =
+          lastTurn?.role === "user" && lastTurn.content === userInput
+            ? { ...history, turns: history.turns.slice(0, -1) }
+            : history;
+
+        if (turnsToLoad.turns.length > 0) {
+          const historyMessages = historyToMessages(turnsToLoad);
+          // Use updateState to populate the checkpointer
+          await agent.updateState(config, { messages: historyMessages });
+        }
+      }
+    } catch (error) {
+      console.error("[chat] Error checking/populating state:", error);
+    }
+  }
+
+  // Stream with just the new user message
   const stream = await agent.stream(
     {
-      messages: [
-        {
-          role: "user",
-          content: userInput,
-        },
-      ],
+      messages: [{ role: "user", content: userInput }],
     },
-    { streamMode: ["messages", "updates"] },
+    { ...config, streamMode: ["messages", "updates"] },
   );
 
   // Track emitted tool calls to avoid duplicates
