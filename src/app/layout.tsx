@@ -28,10 +28,10 @@ export default function RootLayout({
         >
           <SidebarProvider>
             <AppSidebar />
-            <main>
+            <div className="flex flex-1 flex-col">
               <SidebarTrigger />
-              {children}
-            </main>
+              <main className="flex flex-1 flex-col">{children}</main>
+            </div>
           </SidebarProvider>
         </ThemeProvider>
       </body>
