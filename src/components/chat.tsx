@@ -63,14 +63,6 @@ export function Chat({ conversationId }: ChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
-
   // Load existing conversation turns
   useEffect(() => {
     async function loadConversation() {
@@ -328,7 +320,7 @@ export function Chat({ conversationId }: ChatProps) {
         setIsStreaming(false);
         // Navigate to new conversation URL after streaming completes
         if (shouldNavigate && newConversationId) {
-          router.push(`/conversation/${newConversationId}`);
+          router.push(`/conversation/${newConversationId}`, { scroll: false });
         }
       }
     },
@@ -464,10 +456,7 @@ function MessageBubble({ message }: { message: Message }) {
       </Avatar>
 
       {isUser ? (
-        <Card
-          size="sm"
-          className="bg-primary text-primary-foreground max-w-[80%]"
-        >
+        <Card size="sm" className="max-w-[80%]">
           <CardContent>
             <p className="whitespace-pre-wrap">{message.content}</p>
           </CardContent>
@@ -477,19 +466,31 @@ function MessageBubble({ message }: { message: Message }) {
           {/* Reasoning section */}
           {message.reasoning && (
             <CardContent>
-              <Collapsible>
-                <div className="border-muted-foreground/20 bg-muted/30 rounded-lg border p-2">
-                  <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 text-xs transition-colors [&[data-state=open]>svg:first-child]:rotate-90">
-                    <ChevronRight className="size-3 transition-transform" />
-                    <span>Thinking...</span>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <p className="text-muted-foreground mt-2 whitespace-pre-wrap text-xs">
-                      {message.reasoning}
+              {(() => {
+                const lines = message.reasoning.split("\n");
+                const visibleLines = lines.slice(-5).join("\n");
+                const hiddenLines = lines.slice(0, -5).join("\n");
+                const hasHiddenContent = lines.length > 5;
+
+                return (
+                  <Collapsible>
+                    <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 text-xs transition-colors [&[data-state=open]>svg:first-child]:rotate-90">
+                      <ChevronRight className="size-3 transition-transform" />
+                      <span>Show more reasoning</span>
+                    </CollapsibleTrigger>
+                    {hasHiddenContent && (
+                      <CollapsibleContent>
+                        <p className="text-muted-foreground whitespace-pre-wrap text-xs mt-2">
+                          {hiddenLines}
+                        </p>
+                      </CollapsibleContent>
+                    )}
+                    <p className="text-muted-foreground whitespace-pre-wrap text-xs">
+                      {visibleLines}
                     </p>
-                  </CollapsibleContent>
-                </div>
-              </Collapsible>
+                  </Collapsible>
+                );
+              })()}
             </CardContent>
           )}
 
@@ -515,28 +516,23 @@ function MessageBubble({ message }: { message: Message }) {
 }
 
 function ToolCallBubble({ toolCall }: { toolCall: ToolCall }) {
-  const isSearch = toolCall.name === "search_web";
-
   return (
-    <Collapsible>
-      <Card size="sm" className="border-blue-500/20 bg-blue-500/5">
+    <Collapsible className="my-4">
+      <Card size="sm">
         <CardContent>
           <div className="flex items-center gap-2">
             {toolCall.status === "pending" ? (
-              <Loader2 className="size-3 animate-spin text-blue-500" />
-            ) : isSearch ? (
-              <Search className="size-3 text-blue-500" />
+              <Loader2 className="size-3 animate-spin" />
             ) : (
-              <Wrench className="size-3 text-blue-500" />
+              <Wrench className="size-3" />
             )}
             <span className="text-xs font-medium">
-              {isSearch ? "Searching" : toolCall.name}
-              {isSearch &&
-                typeof toolCall.args.query === "string" &&
+              Calling {toolCall.name}
+              {typeof toolCall.args.query === "string" &&
                 toolCall.args.query && (
                   <span className="text-muted-foreground font-normal">
                     {" "}
-                    for "{toolCall.args.query}"
+                    with "{toolCall.args.query}"
                   </span>
                 )}
             </span>

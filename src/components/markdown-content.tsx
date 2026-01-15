@@ -22,9 +22,7 @@ const components: Components = {
       {children}
     </h4>
   ),
-  p: ({ children }) => (
-    <p className="leading-7 not-first:mt-4">{children}</p>
-  ),
+  p: ({ children }) => <p className="leading-7 not-first:mt-4">{children}</p>,
   blockquote: ({ children }) => (
     <blockquote className="mt-4 border-l-2 pl-6 italic">{children}</blockquote>
   ),
@@ -62,13 +60,14 @@ const components: Components = {
   th: ({ children }) => (
     <th className="border px-4 py-2 text-left font-bold">{children}</th>
   ),
-  td: ({ children }) => (
-    <td className="border px-4 py-2">{children}</td>
-  ),
+  td: ({ children }) => <td className="border px-4 py-2">{children}</td>,
+  hr: () => <hr className="my-8 border-t" />,
 };
 
 export const MarkdownContent = memo(function MarkdownContent({
   content,
-}: { content: string }) {
+}: {
+  content: string;
+}) {
   return <ReactMarkdown components={components}>{content}</ReactMarkdown>;
 });

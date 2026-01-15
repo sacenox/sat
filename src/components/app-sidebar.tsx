@@ -4,6 +4,7 @@ import { MessageSquarePlus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
 import {
   deleteConversation,
   getConversations,
@@ -35,7 +36,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { toast } from "sonner";
 import type { Conversation } from "@/db/schema";
 
 export function AppSidebar() {
@@ -93,7 +93,7 @@ export function AppSidebar() {
             <Button asChild variant="outline" className="w-full justify-start">
               <Link href="/">
                 <MessageSquarePlus className="size-4" />
-                New Chat
+                New Conversation
               </Link>
             </Button>
           </SidebarGroupContent>
@@ -120,7 +120,7 @@ export function AppSidebar() {
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <SidebarMenuAction showOnHover>
-                          <Trash2 className="size-4" />
+                          <Trash2 className="size-4 cursor-pointer" />
                           <span className="sr-only">Delete conversation</span>
                         </SidebarMenuAction>
                       </AlertDialogTrigger>
