@@ -40,3 +40,15 @@ export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
 export type Turn = typeof turns.$inferSelect;
 export type NewTurn = typeof turns.$inferInsert;
+
+// Types for chat history
+interface ToolCallData {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+}
+
+export interface TurnWithToolCalls extends Turn {
+  toolCalls: ToolCallData[];
+}

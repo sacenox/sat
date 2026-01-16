@@ -3,40 +3,11 @@ import {
   AIMessageChunk,
   type BaseMessage,
   HumanMessage,
-  SystemMessage as LangChainSystemMessage,
   ToolMessage,
 } from "@langchain/core/messages";
-import { tool } from "@langchain/core/tools";
 import { concat } from "@langchain/core/utils/stream";
-import { MemorySaver } from "@langchain/langgraph";
-import { ChatOllama } from "@langchain/ollama";
-import { createAgent, SystemMessage } from "langchain";
-import { z } from "zod";
-
-// Relevant documentation:
-//
-// https://v03.api.js.langchain.com/classes/_langchain_ollama.ChatOllama.html
-// https://docs.langchain.com/oss/javascript/integrations/chat/ollama
-
-const searchWeb = tool(
-  async ({ query }: { query: string }) => {
-    console.log(`searching for ${query}`);
-
-    const response = await fetch(
-      `http://localhost:8080/search?q=${query}&format=json`,
-    );
-    const data = await response.json();
-    // TODO: create a plain text version of the results for the llm
-    return JSON.stringify(data.results ?? [], null, 2);
-  },
-  {
-    name: "search_web",
-    description: "search the web for a specified query string",
-    schema: z.object({
-      query: z.string().describe("Search terms to look for"),
-    }),
-  },
-);
+import type { TurnWithToolCalls } from "@/db/schema";
+import { getAgent } from "@/lib/agent";
 
 export type StreamEvent =
   | { type: "token"; content: string }
@@ -47,72 +18,12 @@ export type StreamEvent =
       name: string;
       args: Record<string, unknown>;
     }
-  | { type: "tool_result"; id: string; result: string }
-  | { type: "summarized"; messageCount: number };
+  | { type: "tool_result"; id: string; result: string };
 
-// Types for chat history
-export interface ToolCallData {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-  result?: string;
-}
-
-export interface ChatHistoryTurn {
-  role: "user" | "assistant";
-  content: string;
-  toolCalls?: ToolCallData[];
-}
-
-export interface ChatHistory {
-  summary?: string;
-  turns: ChatHistoryTurn[];
-}
-
-// Singleton checkpointer - persists in memory across requests
-// Note: Lost on server restart, but we re-populate from PostgreSQL
-const checkpointer = new MemorySaver();
-
-// Singleton agent instance
-let agentInstance: ReturnType<typeof createAgent> | null = null;
-
-function getAgent() {
-  if (!agentInstance) {
-    const llm = new ChatOllama({
-      model: "qwen3:8b",
-    });
-
-    agentInstance = createAgent({
-      model: llm,
-      tools: [searchWeb],
-      checkpointer,
-      systemPrompt: new SystemMessage(
-        "You are a helpful web search assistant. Always respond in English, regardless of the language used in search results or user queries." +
-          " You have access to a tool that searches the web." +
-          " Create optimized search queries from the user's input, use them with the search_web tool to get the best results." +
-          " Review the results and provide a concise summary of the information found in English. Include sources and links if available.",
-      ),
-    });
-  }
-  return agentInstance;
-}
-
-/**
- * Convert history turns to LangChain BaseMessage array
- */
-function historyToMessages(history: ChatHistory): BaseMessage[] {
+function historyToMessages(history: TurnWithToolCalls[]): BaseMessage[] {
   const messages: BaseMessage[] = [];
 
-  // Prepend summary as system context if exists
-  if (history.summary) {
-    messages.push(
-      new LangChainSystemMessage(
-        `Previous conversation summary:\n${history.summary}`,
-      ),
-    );
-  }
-
-  for (const turn of history.turns) {
+  for (const turn of history) {
     if (turn.role === "user") {
       messages.push(new HumanMessage(turn.content));
     } else {
@@ -150,7 +61,7 @@ function historyToMessages(history: ChatHistory): BaseMessage[] {
 export async function chat(
   userInput: string,
   onEvent: (event: StreamEvent) => void,
-  history?: ChatHistory,
+  history?: TurnWithToolCalls[],
   conversationId?: string,
 ) {
   const agent = getAgent();
@@ -159,7 +70,7 @@ export async function chat(
 
   // Check if this thread has existing state in the checkpointer
   // If not, we need to populate it from PostgreSQL history
-  if (history && history.turns.length > 0) {
+  if (history && history.length > 0) {
     try {
       const existingState = (await agent.getState(config)) as {
         values?: { messages?: unknown[] };
@@ -173,18 +84,9 @@ export async function chat(
         stateValues.messages.length > 0;
 
       if (!hasMessages) {
-        // Convert history to messages (excluding the current user message if it's already there)
-        const lastTurn = history.turns.at(-1);
-        const turnsToLoad =
-          lastTurn?.role === "user" && lastTurn.content === userInput
-            ? { ...history, turns: history.turns.slice(0, -1) }
-            : history;
-
-        if (turnsToLoad.turns.length > 0) {
-          const historyMessages = historyToMessages(turnsToLoad);
-          // Use updateState to populate the checkpointer
-          await agent.updateState(config, { messages: historyMessages });
-        }
+        const historyMessages = historyToMessages(history);
+        // Use updateState to populate the checkpointer
+        await agent.updateState(config, { messages: historyMessages });
       }
     } catch (error) {
       console.error("[chat] Error checking/populating state:", error);
@@ -214,12 +116,6 @@ export async function chat(
           onEvent({ type: "token", content: message.content });
         }
 
-        // Stream reasoning tokens immediately
-        const reasoning = message.additional_kwargs?.reasoning_content;
-        if (typeof reasoning === "string" && reasoning) {
-          onEvent({ type: "reasoning", content: reasoning });
-        }
-
         // Aggregate for tool call detection within messages mode
         aggregatedAiChunk =
           aggregatedAiChunk === undefined
@@ -228,7 +124,7 @@ export async function chat(
       }
     }
 
-    // Handle state updates from "updates" mode (tool calls and results)
+    // Handle state updates from "updates" mode (tool calls and reasoning)
     if (mode === "updates") {
       const update = chunk as Record<string, { messages?: unknown[] }>;
 

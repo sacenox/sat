@@ -1,6 +1,8 @@
+import { asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { type ChatHistory, chat, type StreamEvent } from "@/lib/chat";
-import { summarizeIfNeeded } from "@/lib/summarize";
+import { db } from "@/db";
+import { type Turn, type TurnWithToolCalls, turns } from "@/db/schema";
+import { chat, type StreamEvent } from "@/lib/chat";
 
 export async function POST(request: Request) {
   const { userInput, conversationId } = await request.json();
@@ -8,25 +10,13 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      let history: ChatHistory | undefined;
+      let history: Turn[] | undefined;
 
       if (conversationId) {
-        try {
-          const result = await summarizeIfNeeded(conversationId);
-          history = result.history;
-
-          // Notify client if summarization occurred
-          if (result.summarizedCount > 0) {
-            controller.enqueue(
-              encoder.encode(
-                `${JSON.stringify({ type: "summarized", messageCount: result.summarizedCount })}\n`,
-              ),
-            );
-          }
-        } catch (error) {
-          console.error("Failed to fetch conversation history:", error);
-          // Continue without history if fetch fails
-        }
+        history = await db.query.turns.findMany({
+          where: eq(turns.conversationId, conversationId),
+          orderBy: [asc(turns.createdAt)],
+        });
       }
 
       await chat(
@@ -35,7 +25,7 @@ export async function POST(request: Request) {
           // Use newline-delimited JSON for easier parsing
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         },
-        history,
+        history as TurnWithToolCalls[],
         conversationId,
       );
 
